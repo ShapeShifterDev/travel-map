@@ -1,12 +1,12 @@
 // routes.js
 // One curved driving route: Guatemala City -> Antigua Guatemala
 // Trimmed to start/end at the edge-center of the pin circles.
-// Shows ONE car icon centered along the curve (rotated to direction of travel).
+// Shows ONE car icon centered along the curve (correctly oriented & larger).
 
 (function () {
   function pinCenterScreenPoint(map, lngLat, radiusPx) {
     const p = map.project({ lng: lngLat[0], lat: lngLat[1] });
-    return { x: p.x, y: p.y - radiusPx }; // marker anchor is bottom
+    return { x: p.x, y: p.y - radiusPx };
   }
 
   function trimToCircleEdges(map, aLngLat, bLngLat, aRadiusPx, bRadiusPx) {
@@ -59,13 +59,11 @@
       coords.push([ll.lng, ll.lat]);
     }
 
-    // Midpoint (t=0.5)
-    const t = 0.5, mt = 0.5;
-    const midX = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
-    const midY = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
     const midLL = map.unproject({ x: midX, y: midY });
 
-    // Direction of travel based on A->B in screen space
+    // Direction of travel
     const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
 
     return { coords, midLL: [midLL.lng, midLL.lat], angleDeg };
@@ -75,23 +73,17 @@
     if (map.hasImage(id)) return;
 
     const svgText = await fetch(svgUrl, { cache: 'no-store' }).then(r => {
-      if (!r.ok) throw new Error(`Failed to load ${svgUrl}: ${r.status}`);
+      if (!r.ok) throw new Error(`Failed to load ${svgUrl}`);
       return r.text();
     });
 
     const blob = new Blob([svgText], { type: 'image/svg+xml' });
-    const objectUrl = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
 
     const img = new Image();
-    img.decoding = 'async';
-    img.src = objectUrl;
-
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-
-    URL.revokeObjectURL(objectUrl);
+    img.src = url;
+    await new Promise(res => (img.onload = res));
+    URL.revokeObjectURL(url);
 
     map.addImage(id, img, { pixelRatio });
   }
@@ -99,11 +91,11 @@
   window.addEventListener('travelMap:ready', async (e) => {
     const map = e.detail.map;
 
-    const guatemalaCity = [-90.5069, 14.6349];     // secondary pin
-    const antiguaGuatemala = [-90.7346, 14.5586];  // primary pin
+    const guatemalaCity = [-90.5069, 14.6349];
+    const antiguaGuatemala = [-90.7346, 14.5586];
 
-    const R_PRIMARY = 15;   // 30px / 2
-    const R_SECONDARY = 9;  // 18px / 2
+    const R_PRIMARY = 15;
+    const R_SECONDARY = 9;
 
     if (!map.getSource('routes')) {
       map.addSource('routes', {
@@ -112,10 +104,8 @@
       });
     }
 
-    // Load your car.svg as a MapLibre icon
     await loadSvgAsMapImage(map, 'car-icon', './icons/car.svg', 2);
 
-    // Line layer
     if (!map.getLayer('drive-route-line')) {
       map.addLayer({
         id: 'drive-route-line',
@@ -131,7 +121,6 @@
       });
     }
 
-    // Car icon at midpoint
     if (!map.getLayer('drive-route-car')) {
       map.addLayer({
         id: 'drive-route-car',
@@ -140,42 +129,52 @@
         filter: ['==', ['get', 'kind'], 'drive-car'],
         layout: {
           'icon-image': 'car-icon',
-          'icon-size': 0.55,              // adjust if needed; targets ~secondary pin size
+          'icon-size': 1.1,                 // ⬅ doubled size
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
-          'icon-rotate': ['get', 'angle']
+          // ⬇ rotation fix (90° offset – adjust if your SVG faces a different direction)
+          'icon-rotate': ['+', ['get', 'angle'], 90]
         }
       });
     }
 
-    function updateGuatemalaToAntigua() {
-      const [startLL, endLL] = trimToCircleEdges(map, guatemalaCity, antiguaGuatemala, R_SECONDARY, R_PRIMARY);
-      const { coords, midLL, angleDeg } = curvedLineScreenSpace(map, startLL, endLL, 0.18, 18, 55, 90);
+    function updateRoute() {
+      const [startLL, endLL] = trimToCircleEdges(
+        map,
+        guatemalaCity,
+        antiguaGuatemala,
+        R_SECONDARY,
+        R_PRIMARY
+      );
 
-      const lineFeature = {
-        type: 'Feature',
-        properties: { kind: 'drive-line' },
-        geometry: { type: 'LineString', coordinates: coords }
-      };
-
-      const carFeature = {
-        type: 'Feature',
-        properties: { kind: 'drive-car', angle: angleDeg },
-        geometry: { type: 'Point', coordinates: midLL }
-      };
+      const { coords, midLL, angleDeg } =
+        curvedLineScreenSpace(map, startLL, endLL);
 
       map.getSource('routes').setData({
         type: 'FeatureCollection',
-        features: [lineFeature, carFeature]
+        features: [
+          {
+            type: 'Feature',
+            properties: { kind: 'drive-line' },
+            geometry: { type: 'LineString', coordinates: coords }
+          },
+          {
+            type: 'Feature',
+            properties: {
+              kind: 'drive-car',
+              angle: angleDeg
+            },
+            geometry: { type: 'Point', coordinates: midLL }
+          }
+        ]
       });
     }
 
-    updateGuatemalaToAntigua();
-    map.once('idle', updateGuatemalaToAntigua);
-    map.on('move', updateGuatemalaToAntigua);
-    map.on('zoom', updateGuatemalaToAntigua);
-    map.on('resize', updateGuatemalaToAntigua);
+    updateRoute();
+    map.on('move', updateRoute);
+    map.on('zoom', updateRoute);
+    map.on('resize', updateRoute);
   });
 })();
