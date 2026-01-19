@@ -85,16 +85,11 @@
       offset: 16
     }).setHTML(tooltipHtml);
 
-    const marker = new maplibregl.Marker({
-      element: el,
-      anchor: 'bottom'
-    })
+    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([lng, lat])
       .addTo(map);
 
-    el.addEventListener('mouseenter', () =>
-      popup.setLngLat([lng, lat]).addTo(map)
-    );
+    el.addEventListener('mouseenter', () => popup.setLngLat([lng, lat]).addTo(map));
     el.addEventListener('mouseleave', () => popup.remove());
 
     return marker;
@@ -111,46 +106,25 @@
     if (!resp.ok) throw new Error(`Failed to load custom.geo.json: ${resp.status}`);
     const geojson = await resp.json();
 
-    map.addSource('visited-countries', {
-      type: 'geojson',
-      data: geojson
-    });
-
+    map.addSource('visited-countries', { type: 'geojson', data: geojson });
     map.addLayer({
       id: 'visited-countries-softfill',
       type: 'fill',
       source: 'visited-countries',
-      paint: {
-        'fill-color': '#ffe8a3',
-        'fill-opacity': 0.30
-      }
+      paint: { 'fill-color': '#ffe8a3', 'fill-opacity': 0.30 }
     });
 
     // --- Guatemala pins ---
+    addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true });
+    addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
+    addCityPin({ lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
 
-    // Guatemala City (secondary)
-    addCityPin({
-      lng: -90.5069,
-      lat: 14.6349,
-      city: 'Guatemala City',
-      small: true
-    });
-
-    // Antigua Guatemala (primary)
-    addCityPin({
-      lng: -90.7346,
-      lat: 14.5586,
-      city: 'Antigua Guatemala',
-      nights: 2
-    });
-
-    // Lake Atitlán (primary; Panajachel reference)
-    addCityPin({
-      lng: -91.1580,
-      lat: 14.7409,
-      city: 'Lake Atitlán',
-      nights: 2
-    });
+    // --- El Salvador pins ---
+    addCityPin({ lng: -89.7360, lat: 13.7770, city: 'Nahuizalco', small: true });
+    addCityPin({ lng: -89.7450, lat: 13.8410, city: 'Juayúa', nights: 1 });
+    addCityPin({ lng: -89.3850, lat: 13.4920, city: 'El Tunco', nights: 2 });
+    addCityPin({ lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
+    
   });
 </script>
 </body>
