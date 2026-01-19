@@ -6,50 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link href="https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.css" rel="stylesheet" />
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      overflow: hidden;
-      font-family: Arial, sans-serif;
-    }
-    #map {
-      width: 100%;
-      height: 100%;
-      background-color: #e0e0e0;
-    }
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; font-family: Arial, sans-serif; }
+    #map { width:100%; height:100%; background-color:#e0e0e0; }
 
-    /* Base pin styling */
-    .pin {
-      width: 30px;
-      height: 30px;
-      border-radius: 999px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 14px;
-      user-select: none;
-      cursor: pointer;
-
-      background-color: rgba(159, 216, 181, 0.55);
-      color: #1f4d3a;
-
-      border: 2px solid rgba(255, 255, 255, 0.95);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    .pin{
+      width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
+      font-weight:700;font-size:14px;user-select:none;cursor:pointer;
+      background-color: rgba(159,216,181,0.55); color:#1f4d3a;
+      border:2px solid rgba(255,255,255,0.95);
+      box-shadow:0 2px 6px rgba(0,0,0,0.18);
     }
-
-    .pin.small {
-      width: 18px;
-      height: 18px;
-      font-size: 12px;
-      font-weight: 700;
-    }
-
-    /* Starting city emphasis */
-    .pin.start {
-      border-color: #2f9e6f;
-    }
+    .pin.small{ width:18px;height:18px;font-size:12px;font-weight:700; }
+    .pin.start{ border-color:#2f9e6f; }
   </style>
 </head>
 <body>
@@ -71,22 +39,14 @@
     el.className = small ? 'pin small' : 'pin';
     if (start) el.classList.add('start');
 
-    if (!small && typeof nights === 'number') {
-      el.textContent = String(nights);
-    } else {
-      el.textContent = '';
-    }
+    if (!small && typeof nights === 'number') el.textContent = String(nights);
 
     let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
     if (!small && typeof nights === 'number') {
       tooltipHtml += `<div style="font-size:12px;">${nights} Night${nights === 1 ? '' : 's'}</div>`;
     }
 
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 16
-    }).setHTML(tooltipHtml);
+    const popup = new maplibregl.Popup({ closeButton:false, closeOnClick:false, offset:16 }).setHTML(tooltipHtml);
 
     new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([lng, lat])
@@ -116,19 +76,17 @@
 
     URL.revokeObjectURL(objectUrl);
 
-    if (!map.hasImage(id)) {
-      map.addImage(id, img, { pixelRatio });
-    }
+    if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio });
   }
 
-  // Because markers are anchored at the BOTTOM of the circle, the pin's center is above the lng/lat.
+  // Marker anchor is 'bottom' so the lng/lat is the bottom-center of the circle.
+  // The circle center is radiusPx above that point (in screen pixels).
   function pinCenterScreenPoint(map, lngLat, radiusPx) {
     const p = map.project({ lng: lngLat[0], lat: lngLat[1] });
-    return { x: p.x, y: p.y - radiusPx }; // move up by radius to reach circle center
+    return { x: p.x, y: p.y - radiusPx };
   }
 
   function adjustLineToPinEdges(map, aLngLat, bLngLat, aRadiusPx, bRadiusPx) {
-    // Work entirely in screen space using circle centers, then trim to circle edges.
     const aC = pinCenterScreenPoint(map, aLngLat, aRadiusPx);
     const bC = pinCenterScreenPoint(map, bLngLat, bRadiusPx);
 
@@ -139,56 +97,53 @@
     const ux = dx / len;
     const uy = dy / len;
 
+    // move from center to edge along the segment direction
     const aE = { x: aC.x + ux * aRadiusPx, y: aC.y + uy * aRadiusPx };
     const bE = { x: bC.x - ux * bRadiusPx, y: bC.y - uy * bRadiusPx };
 
     const aLL = map.unproject(aE);
     const bLL = map.unproject(bE);
 
-    return [
-      [aLL.lng, aLL.lat],
-      [bLL.lng, bLL.lat]
-    ];
+    return [[aLL.lng, aLL.lat], [bLL.lng, bLL.lat]];
   }
 
-  function controlPointForCurve(a, b, curvature = 0.22) {
-    // a, b are [lng,lat]. Create a perpendicular offset control point in lng/lat space.
-    const [x1, y1] = a;
-    const [x2, y2] = b;
+  // Build curve in SCREEN SPACE (so it visibly curves), then unproject to lng/lat for the LineString.
+  function curvedLineScreenSpace(map, startLL, endLL, curvaturePx = 70, segments = 80) {
+    const a = map.project({ lng: startLL[0], lat: startLL[1] });
+    const b = map.project({ lng: endLL[0], lat: endLL[1] });
 
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
 
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
 
     const px = -dy / len;
     const py = dx / len;
 
-    const offset = len * curvature;
-    return [mx + px * offset, my + py * offset];
-  }
+    // control point offset perpendicular to the segment
+    const c = { x: mx + px * curvaturePx, y: my + py * curvaturePx };
 
-  function quadraticBezierCoords(a, c, b, segments = 64) {
-    // Returns a smooth LineString coordinate array.
     const coords = [];
     for (let i = 0; i <= segments; i++) {
       const t = i / segments;
       const mt = 1 - t;
 
-      const x = (mt * mt * a[0]) + (2 * mt * t * c[0]) + (t * t * b[0]);
-      const y = (mt * mt * a[1]) + (2 * mt * t * c[1]) + (t * t * b[1]);
-      coords.push([x, y]);
-    }
-    return coords;
-  }
+      const x = (mt*mt*a.x) + (2*mt*t*c.x) + (t*t*b.x);
+      const y = (mt*mt*a.y) + (2*mt*t*c.y) + (t*t*b.y);
 
-  function bezierPoint(a, c, b, t = 0.5) {
-    const mt = 1 - t;
-    const x = (mt * mt * a[0]) + (2 * mt * t * c[0]) + (t * t * b[0]);
-    const y = (mt * mt * a[1]) + (2 * mt * t * c[1]) + (t * t * b[1]);
-    return [x, y];
+      const ll = map.unproject({ x, y });
+      coords.push([ll.lng, ll.lat]);
+    }
+
+    // midpoint on curve for car icon (t=0.5)
+    const t = 0.5, mt = 0.5;
+    const midX = (mt*mt*a.x) + (2*mt*t*c.x) + (t*t*b.x);
+    const midY = (mt*mt*a.y) + (2*mt*t*c.y) + (t*t*b.y);
+    const midLL = map.unproject({ x: midX, y: midY });
+
+    return { coords, midPoint: [midLL.lng, midLL.lat] };
   }
 
   map.on('load', async () => {
@@ -196,7 +151,7 @@
       map.setLayoutProperty('maritime-boundaries', 'visibility', 'none');
     }
 
-    // Countries soft fill
+    // Country soft fill
     const countriesUrl = `./custom.geo.json?v=${Date.now()}`;
     const resp = await fetch(countriesUrl, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`Failed to load custom.geo.json: ${resp.status}`);
@@ -210,33 +165,31 @@
       paint: { 'fill-color': '#ffe8a3', 'fill-opacity': 0.30 }
     });
 
-    // --- Pins ---
-    // Guatemala
+    // Pins
     addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true });
     addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
     addCityPin({ lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
 
-    // El Salvador
     addCityPin({ lng: -89.7360, lat: 13.7770, city: 'Nahuizalco', small: true });
     addCityPin({ lng: -89.7450, lat: 13.8410, city: 'Juayúa', nights: 1 });
     addCityPin({ lng: -89.3850, lat: 13.4920, city: 'El Tunco', nights: 2 });
     addCityPin({ lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
 
-    // Panama
     addCityPin({ lng: -79.5199, lat: 8.9824, city: 'Panama City', nights: 3 });
     addCityPin({ lng: -82.2479, lat: 9.3406, city: 'Bocas del Toro', nights: 2 });
     addCityPin({ lng: -79.3835, lat: 9.0714, city: 'PTY Airport', small: true });
 
-    // Load custom car SVG icon (repo path: /icons/car.svg)
-    await loadSvgAsMapImage('car-icon', './icons/car.svg', 2);
+    // Try to load car icon; if it fails, line should still render.
+    try {
+      await loadSvgAsMapImage('car-icon', './icons/car.svg', 2);
+    } catch (e) {
+      console.warn('Car icon failed to load; line will still show:', e);
+    }
 
     // Routes source
-    map.addSource('routes', {
-      type: 'geojson',
-      data: { type: "FeatureCollection", features: [] }
-    });
+    map.addSource('routes', { type: 'geojson', data: { type: "FeatureCollection", features: [] } });
 
-    // Driving line (single smooth curve)
+    // Driving line layer
     map.addLayer({
       id: 'drive-route-line',
       type: 'line',
@@ -251,7 +204,7 @@
       }
     });
 
-    // Direction indicators along the line
+    // Direction arrows
     map.addLayer({
       id: 'drive-route-arrows',
       type: 'symbol',
@@ -272,61 +225,66 @@
       }
     });
 
-    // Car icon as a POINT feature at mid-curve (size ~ secondary pin)
-    map.addLayer({
-      id: 'drive-route-car',
-      type: 'symbol',
-      source: 'routes',
-      filter: ['==', ['get', 'kind'], 'car'],
-      layout: {
-        'icon-image': 'car-icon',
-        'icon-size': 1.0,
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true
-      }
-    });
+    // Car icon layer (only if loaded)
+    if (map.hasImage('car-icon')) {
+      map.addLayer({
+        id: 'drive-route-car',
+        type: 'symbol',
+        source: 'routes',
+        filter: ['==', ['get', 'kind'], 'car'],
+        layout: {
+          'icon-image': 'car-icon',
+          'icon-size': 1.0, // ~secondary pin
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true
+        }
+      });
+    }
 
     function updateGuatemalaToAntiguaDrive() {
-      const guatemalaCityLL = [-90.5069, 14.6349]; // small pin (secondary)
-      const antiguaLL = [-90.7346, 14.5586];       // large pin (primary)
+      const guatemalaCityLL = [-90.5069, 14.6349]; // secondary (small)
+      const antiguaLL = [-90.7346, 14.5586];       // primary (large)
 
-      // These radii match your CSS circle sizes and the 'anchor: bottom' marker behavior
-      const R_PRIMARY = 15;   // 30px / 2
-      const R_SECONDARY = 9;  // 18px / 2
+      const R_PRIMARY = 15;    // 30/2
+      const R_SECONDARY = 9;   // 18/2
 
-      // (2) Trim endpoints so the line starts/ends at the CENTERED EDGE of each pin circle
+      // Trim endpoints to the CIRCLE EDGES (centered)
       const [startLL, endLL] = adjustLineToPinEdges(map, guatemalaCityLL, antiguaLL, R_SECONDARY, R_PRIMARY);
 
-      // (1) Build a smooth curve (many points), not a 2-segment polyline
-      const control = controlPointForCurve(startLL, endLL, 0.22);
-      const curveCoords = quadraticBezierCoords(startLL, control, endLL, 80);
+      // Build a smooth curved LineString by sampling a screen-space bezier
+      const { coords, midPoint } = curvedLineScreenSpace(map, startLL, endLL, 70, 90);
 
       const driveLine = {
         type: "Feature",
         properties: { mode: "drive" },
-        geometry: { type: "LineString", coordinates: curveCoords }
+        geometry: { type: "LineString", coordinates: coords }
       };
 
-      // (3) Car icon about halfway along the curve
-      const carPos = bezierPoint(startLL, control, endLL, 0.5);
       const carPoint = {
         type: "Feature",
         properties: { kind: "car" },
-        geometry: { type: "Point", coordinates: carPos }
+        geometry: { type: "Point", coordinates: midPoint }
       };
 
-      map.getSource('routes').setData({
+      const fc = {
         type: "FeatureCollection",
-        features: [driveLine, carPoint]
-      });
+        features: map.hasImage('car-icon') ? [driveLine, carPoint] : [driveLine]
+      };
+
+      map.getSource('routes').setData(fc);
     }
 
+    // Initial draw (also after style finishes first render)
     updateGuatemalaToAntiguaDrive();
+    map.once('idle', updateGuatemalaToAntiguaDrive);
 
-    // Recompute as the map moves/zooms so endpoints remain pinned to circle edges.
+    // Keep endpoints aligned while moving/zooming
     map.on('move', updateGuatemalaToAntiguaDrive);
     map.on('zoom', updateGuatemalaToAntiguaDrive);
     map.on('resize', updateGuatemalaToAntiguaDrive);
+
+    // Minimal debug: confirm routes source updates
+    console.log('Drive route initialized; routes source present:', !!map.getSource('routes'));
   });
 </script>
 </body>
