@@ -1,7 +1,7 @@
 // routes.js
 // One curved driving route: Guatemala City -> Antigua Guatemala
 // Trimmed to start/end at the edge-center of the pin circles.
-// Adds ONE direction arrow tip at the center of the line (icon + rotation).
+// Shows ONE car icon centered along the curve (rotated to direction of travel).
 
 (function () {
   function pinCenterScreenPoint(map, lngLat, radiusPx) {
@@ -65,49 +65,38 @@
     const midY = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
     const midLL = map.unproject({ x: midX, y: midY });
 
+    // Direction of travel based on A->B in screen space
     const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
 
     return { coords, midLL: [midLL.lng, midLL.lat], angleDeg };
   }
 
-  function addArrowImage(map) {
-    if (map.hasImage('arrow-tip')) return;
+  async function loadSvgAsMapImage(map, id, svgUrl, pixelRatio = 2) {
+    if (map.hasImage(id)) return;
 
-    // Create arrow as ImageData via a small canvas, then pass {width,height,data}
-    const size = 64;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
+    const svgText = await fetch(svgUrl, { cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error(`Failed to load ${svgUrl}: ${r.status}`);
+      return r.text();
+    });
 
-    // Background transparent
-    ctx.clearRect(0, 0, size, size);
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const objectUrl = URL.createObjectURL(blob);
 
-    // Draw filled triangle (points right)
-    ctx.fillStyle = '#2f9e6f';
-    ctx.beginPath();
-    ctx.moveTo(14, 12);
-    ctx.lineTo(52, 32);
-    ctx.lineTo(14, 52);
-    ctx.closePath();
-    ctx.fill();
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = objectUrl;
 
-    // White halo stroke
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 6;
-    ctx.lineJoin = 'round';
-    ctx.stroke();
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
 
-    const imgData = ctx.getImageData(0, 0, size, size);
+    URL.revokeObjectURL(objectUrl);
 
-    map.addImage('arrow-tip', {
-      width: size,
-      height: size,
-      data: imgData.data
-    }, { pixelRatio: 2 });
+    map.addImage(id, img, { pixelRatio });
   }
 
-  window.addEventListener('travelMap:ready', (e) => {
+  window.addEventListener('travelMap:ready', async (e) => {
     const map = e.detail.map;
 
     const guatemalaCity = [-90.5069, 14.6349];     // secondary pin
@@ -123,8 +112,10 @@
       });
     }
 
-    addArrowImage(map);
+    // Load your car.svg as a MapLibre icon
+    await loadSvgAsMapImage(map, 'car-icon', './icons/car.svg', 2);
 
+    // Line layer
     if (!map.getLayer('drive-route-line')) {
       map.addLayer({
         id: 'drive-route-line',
@@ -140,15 +131,16 @@
       });
     }
 
-    if (!map.getLayer('drive-route-arrow-tip')) {
+    // Car icon at midpoint
+    if (!map.getLayer('drive-route-car')) {
       map.addLayer({
-        id: 'drive-route-arrow-tip',
+        id: 'drive-route-car',
         type: 'symbol',
         source: 'routes',
-        filter: ['==', ['get', 'kind'], 'drive-arrow'],
+        filter: ['==', ['get', 'kind'], 'drive-car'],
         layout: {
-          'icon-image': 'arrow-tip',
-          'icon-size': 0.35,
+          'icon-image': 'car-icon',
+          'icon-size': 0.55,              // adjust if needed; targets ~secondary pin size
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
@@ -160,16 +152,7 @@
 
     function updateGuatemalaToAntigua() {
       const [startLL, endLL] = trimToCircleEdges(map, guatemalaCity, antiguaGuatemala, R_SECONDARY, R_PRIMARY);
-
-      const { coords, midLL, angleDeg } = curvedLineScreenSpace(
-        map,
-        startLL,
-        endLL,
-        0.18,
-        18,
-        55,
-        90
-      );
+      const { coords, midLL, angleDeg } = curvedLineScreenSpace(map, startLL, endLL, 0.18, 18, 55, 90);
 
       const lineFeature = {
         type: 'Feature',
@@ -177,15 +160,15 @@
         geometry: { type: 'LineString', coordinates: coords }
       };
 
-      const arrowFeature = {
+      const carFeature = {
         type: 'Feature',
-        properties: { kind: 'drive-arrow', angle: angleDeg },
+        properties: { kind: 'drive-car', angle: angleDeg },
         geometry: { type: 'Point', coordinates: midLL }
       };
 
       map.getSource('routes').setData({
         type: 'FeatureCollection',
-        features: [lineFeature, arrowFeature]
+        features: [lineFeature, carFeature]
       });
     }
 
