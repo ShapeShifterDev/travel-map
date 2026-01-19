@@ -106,17 +106,21 @@
 
     await loadSvgAsMapImage(map, 'car-icon', './icons/car.svg', 2);
 
-    if (!map.getLayer('drive-route-line')) {
+    if (!map.getLayer('drive-route-car')) {
       map.addLayer({
-        id: 'drive-route-line',
-        type: 'line',
+        id: 'drive-route-car',
+        type: 'symbol',
         source: 'routes',
-        filter: ['==', ['get', 'kind'], 'drive-line'],
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': '#2f9e6f',
-          'line-width': 3,
-          'line-opacity': 0.85
+        filter: ['==', ['get', 'kind'], 'drive-car'],
+        minzoom: 6.0, // hide car until zoomed in
+        layout: {
+          'icon-image': 'car-icon',
+          'icon-size': 3.5,
+          'icon-rotation-alignment': 'map',
+          'icon-keep-upright': false,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotate': ['+', ['get', 'angle'], 90]
         }
       });
     }
