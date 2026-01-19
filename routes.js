@@ -129,13 +129,13 @@
         filter: ['==', ['get', 'kind'], 'drive-car'],
         layout: {
           'icon-image': 'car-icon',
-          'icon-size': 1.1,                 // ⬅ doubled size
+          'icon-size': 1.5,
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
           // ⬇ rotation fix (90° offset – adjust if your SVG faces a different direction)
-          'icon-rotate': ['+', ['get', 'angle'], 90]
+          'icon-rotate': ['+', ['get', 'angle'], -90]
         }
       });
     }
