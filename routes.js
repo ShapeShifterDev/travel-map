@@ -28,34 +28,37 @@
     return [[aLL.lng, aLL.lat], [bLL.lng, bLL.lat]];
   }
 
-  function curvedLineScreenSpace(map, startLL, endLL, curvaturePx = 70, segments = 90) {
-    const a = map.project({ lng: startLL[0], lat: startLL[1] });
-    const b = map.project({ lng: endLL[0], lat: endLL[1] });
+  function curvedLineScreenSpace(map, startLL, endLL, curvatureFactor = 0.18, minPx = 18, maxPx = 55, segments = 90) {
+  const a = map.project({ lng: startLL[0], lat: startLL[1] });
+  const b = map.project({ lng: endLL[0], lat: endLL[1] });
 
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
 
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
 
-    const px = -dy / len;
-    const py = dx / len;
+  // NEW: curvature scales with segment length (clamped)
+  const curvaturePx = Math.max(minPx, Math.min(maxPx, len * curvatureFactor));
 
-    const c = { x: mx + px * curvaturePx, y: my + py * curvaturePx };
+  const px = -dy / len;
+  const py = dx / len;
 
-    const coords = [];
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const mt = 1 - t;
+  const c = { x: mx + px * curvaturePx, y: my + py * curvaturePx };
 
-      const x = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
-      const y = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
+  const coords = [];
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const mt = 1 - t;
 
-      const ll = map.unproject({ x, y });
-      coords.push([ll.lng, ll.lat]);
-    }
-    return coords;
+    const x = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
+    const y = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
+
+    const ll = map.unproject({ x, y });
+    coords.push([ll.lng, ll.lat]);
+  }
+  return coords;
   }
 
   window.addEventListener('travelMap:ready', (e) => {
@@ -93,7 +96,7 @@
 
     function updateGuatemalaToAntigua() {
       const [startLL, endLL] = trimToCircleEdges(map, guatemalaCity, antiguaGuatemala, R_SECONDARY, R_PRIMARY);
-      const lineCoords = curvedLineScreenSpace(map, startLL, endLL, 70, 90);
+      const lineCoords = curvedLineScreenSpace(map, startLL, endLL, 0.18, 18, 55, 90);
 
       const feature = {
         type: 'Feature',
