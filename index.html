@@ -48,7 +48,7 @@
 
     /* Starting city emphasis */
     .pin.start {
-      border-color: #2f9e6f; /* vibrant green */
+      border-color: #2f9e6f;
     }
   </style>
 </head>
@@ -71,12 +71,14 @@
     el.className = small ? 'pin small' : 'pin';
     if (start) el.classList.add('start');
 
+    // Show number only for primary pins
     if (!small && typeof nights === 'number') {
       el.textContent = String(nights);
     } else {
       el.textContent = '';
     }
 
+    // Tooltip content
     let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
     if (!small && typeof nights === 'number') {
       tooltipHtml += `<div style="font-size:12px;">${nights} Night${nights === 1 ? '' : 's'}</div>`;
@@ -88,29 +90,78 @@
       offset: 16
     }).setHTML(tooltipHtml);
 
-    const marker = new maplibregl.Marker({
-      element: el,
-      anchor: 'bottom'
-    })
+    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([lng, lat])
       .addTo(map);
 
-    el.addEventListener('mouseenter', () =>
-      popup.setLngLat([lng, lat]).addTo(map)
-    );
+    el.addEventListener('mouseenter', () => popup.setLngLat([lng, lat]).addTo(map));
     el.addEventListener('mouseleave', () => popup.remove());
 
     return marker;
   }
 
+  function curvedLine(a, b, curvature = 0.25) {
+    const [x1, y1] = a;
+    const [x2, y2] = b;
+
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const px = -dy / len;
+    const py = dx / len;
+
+    const offset = len * curvature;
+    const cx = mx + px * offset;
+    const cy = my + py * offset;
+
+    return {
+      type: "Feature",
+      properties: { mode: "drive" },
+      geometry: {
+        type: "LineString",
+        coordinates: [a, [cx, cy], b]
+      }
+    };
+  }
+
+  async function loadSvgAsMapImage(id, svgUrl, pixelRatio = 2) {
+    const svgText = await fetch(svgUrl, { cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error(`Failed to load ${svgUrl}: ${r.status}`);
+      return r.text();
+    });
+
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const objectUrl = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = objectUrl;
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    URL.revokeObjectURL(objectUrl);
+
+    if (!map.hasImage(id)) {
+      map.addImage(id, img, { pixelRatio });
+    }
+  }
+
   map.on('load', async () => {
+    // Hide maritime/sea territory boundaries (if present)
     if (map.getLayer('maritime-boundaries')) {
       map.setLayoutProperty('maritime-boundaries', 'visibility', 'none');
     }
 
-    // Country soft fill
-    const url = `./custom.geo.json?v=${Date.now()}`;
-    const resp = await fetch(url, { cache: 'no-store' });
+    // Countries soft fill
+    const countriesUrl = `./custom.geo.json?v=${Date.now()}`;
+    const resp = await fetch(countriesUrl, { cache: 'no-store' });
     if (!resp.ok) throw new Error(`Failed to load custom.geo.json: ${resp.status}`);
     const geojson = await resp.json();
 
@@ -122,61 +173,98 @@
       paint: { 'fill-color': '#ffe8a3', 'fill-opacity': 0.30 }
     });
 
-    // --- Guatemala pins ---
-    addCityPin({
-      lng: -90.5069,
-      lat: 14.6349,
-      city: 'Guatemala City',
-      small: true,
-      start: true
-    });
+    // --- Pins ---
+    // Guatemala
+    addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true });
+    addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
+    addCityPin({ lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
 
-    addCityPin({
-      lng: -90.7346,
-      lat: 14.5586,
-      city: 'Antigua Guatemala',
-      nights: 2
-    });
-
-    addCityPin({
-      lng: -91.1580,
-      lat: 14.7409,
-      city: 'Lake Atitlán',
-      nights: 2
-    });
-
-    // --- El Salvador pins ---
+    // El Salvador
     addCityPin({ lng: -89.7360, lat: 13.7770, city: 'Nahuizalco', small: true });
     addCityPin({ lng: -89.7450, lat: 13.8410, city: 'Juayúa', nights: 1 });
     addCityPin({ lng: -89.3850, lat: 13.4920, city: 'El Tunco', nights: 2 });
     addCityPin({ lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
 
-    // --- Panama pins ---
-    // Panama City (primary): 3 nights
-    addCityPin({
-      lng: -79.5199,
-      lat: 8.9824,
-      city: 'Panama City',
-      nights: 3
-    });
+    // Panama
+    addCityPin({ lng: -79.5199, lat: 8.9824, city: 'Panama City', nights: 3 });
+    addCityPin({ lng: -82.2479, lat: 9.3406, city: 'Bocas del Toro', nights: 2 });
+    addCityPin({ lng: -79.3835, lat: 9.0714, city: 'PTY Airport', small: true });
 
-    // Bocas del Toro (primary): 2 nights (Bocas Town)
-    addCityPin({
-      lng: -82.2479,
-      lat: 9.3406,
-      city: 'Bocas del Toro',
-      nights: 2
-    });
+    // --- NEW: load your custom car SVG icon ---
+    // Put your SVG at: /icons/car.svg (repo path: icons/car.svg)
+    await loadSvgAsMapImage('car-icon', './icons/car.svg', 2);
 
-    // PTY airport (secondary): small, no number
-    addCityPin({
-      lng: -79.3835,
-      lat: 9.0714,
-      city: 'PTY',
-      small: true
-});
+    // --- Routes: Driving (Guatemala City -> Antigua Guatemala) ---
+    const guatemalaCity = [-90.5069, 14.6349];
+    const antiguaGuatemala = [-90.7346, 14.5586];
+    const driveRoute1 = curvedLine(guatemalaCity, antiguaGuatemala, 0.22);
+
+    // Add routes source (or update)
+    if (map.getSource('routes')) {
+      map.getSource('routes').setData({ type: "FeatureCollection", features: [driveRoute1] });
+    } else {
+      map.addSource('routes', {
+        type: 'geojson',
+        data: { type: "FeatureCollection", features: [driveRoute1] }
+      });
+    }
+
+    // Main driving line
+    if (!map.getLayer('drive-route-line')) {
+      map.addLayer({
+        id: 'drive-route-line',
+        type: 'line',
+        source: 'routes',
+        filter: ['==', ['get', 'mode'], 'drive'],
+        paint: {
+          'line-color': '#2f9e6f',
+          'line-width': 3,
+          'line-opacity': 0.85
+        }
+      });
+    }
+
+    // Direction indicators along the driving line
+    if (!map.getLayer('drive-route-arrows')) {
+      map.addLayer({
+        id: 'drive-route-arrows',
+        type: 'symbol',
+        source: 'routes',
+        filter: ['==', ['get', 'mode'], 'drive'],
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': '▶',
+          'text-size': 14,
+          'symbol-spacing': 80,
+          'text-rotation-alignment': 'map',
+          'text-keep-upright': false
+        },
+        paint: {
+          'text-color': '#2f9e6f',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1
+        }
+      });
+    }
+
+    // Car icon placed once along the route (custom SVG)
+    if (!map.getLayer('drive-route-car')) {
+      map.addLayer({
+        id: 'drive-route-car',
+        type: 'symbol',
+        source: 'routes',
+        filter: ['==', ['get', 'mode'], 'drive'],
+        layout: {
+          'symbol-placement': 'line',
+          'icon-image': 'car-icon',
+          'icon-size': 0.6,
+          'symbol-spacing': 999999,
+          'icon-rotation-alignment': 'map',
+          'icon-keep-upright': false
+        }
+      });
+    }
   });
 </script>
 </body>
-</html
-
+</html>
