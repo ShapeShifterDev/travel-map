@@ -139,15 +139,15 @@
         type: 'symbol',
         source: 'routes',
         filter: ['==', ['get', 'kind'], 'drive-car'],
-        minzoom: 6.0,
+        minzoom: 8.0,
         layout: {
           'icon-image': 'car-icon',
-          'icon-size': 4.0,                 // your current size
+          'icon-size': 3.5,                 // your current size
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
-          'icon-rotate': ['+', ['get', 'angle'], 90]
+          'icon-rotate': ['+', ['get', 'angle'], 180]
         }
       });
     }
