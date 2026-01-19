@@ -90,42 +90,12 @@
       offset: 16
     }).setHTML(tooltipHtml);
 
-    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+    new maplibregl.Marker({ element: el, anchor: 'bottom' })
       .setLngLat([lng, lat])
       .addTo(map);
 
     el.addEventListener('mouseenter', () => popup.setLngLat([lng, lat]).addTo(map));
     el.addEventListener('mouseleave', () => popup.remove());
-
-    return marker;
-  }
-
-  function curvedLine(a, b, curvature = 0.25) {
-    const [x1, y1] = a;
-    const [x2, y2] = b;
-
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
-
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    const px = -dy / len;
-    const py = dx / len;
-
-    const offset = len * curvature;
-    const cx = mx + px * offset;
-    const cy = my + py * offset;
-
-    return {
-      type: "Feature",
-      properties: { mode: "drive" },
-      geometry: {
-        type: "LineString",
-        coordinates: [a, [cx, cy], b]
-      }
-    };
   }
 
   async function loadSvgAsMapImage(id, svgUrl, pixelRatio = 2) {
@@ -153,6 +123,68 @@
     }
   }
 
+  function adjustLineToPinEdges(map, aLngLat, bLngLat, aRadiusPx, bRadiusPx) {
+    // Trim line endpoints in SCREEN SPACE so it touches the pin circle edges.
+    const a = map.project({ lng: aLngLat[0], lat: aLngLat[1] });
+    const b = map.project({ lng: bLngLat[0], lat: bLngLat[1] });
+
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const a2 = { x: a.x + ux * aRadiusPx, y: a.y + uy * aRadiusPx };
+    const b2 = { x: b.x - ux * bRadiusPx, y: b.y - uy * bRadiusPx };
+
+    const aLL = map.unproject(a2);
+    const bLL = map.unproject(b2);
+
+    return [
+      [aLL.lng, aLL.lat],
+      [bLL.lng, bLL.lat]
+    ];
+  }
+
+  function curvedLineWithControl(a, b, curvature = 0.22) {
+    const [x1, y1] = a;
+    const [x2, y2] = b;
+
+    const mx = (x1 + x2) / 2;
+    const my = (y1 + y2) / 2;
+
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const px = -dy / len;
+    const py = dx / len;
+
+    const offset = len * curvature;
+    const cx = mx + px * offset;
+    const cy = my + py * offset;
+
+    return {
+      controlPoint: [cx, cy],
+      line: {
+        type: "Feature",
+        properties: { mode: "drive" },
+        geometry: { type: "LineString", coordinates: [a, [cx, cy], b] }
+      }
+    };
+  }
+
+  function midpointForIcon(a, b, controlPoint) {
+    // Bias midpoint toward the control point so the icon sits nicely “on” the curve.
+    const mx = (a[0] + b[0]) / 2;
+    const my = (a[1] + b[1]) / 2;
+    return [
+      (mx + controlPoint[0]) / 2,
+      (my + controlPoint[1]) / 2
+    ];
+  }
+
   map.on('load', async () => {
     // Hide maritime/sea territory boundaries (if present)
     if (map.getLayer('maritime-boundaries')) {
@@ -173,7 +205,7 @@
       paint: { 'fill-color': '#ffe8a3', 'fill-opacity': 0.30 }
     });
 
-    // --- Pins ---
+    // --- Pins (unchanged) ---
     // Guatemala
     addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true });
     addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
@@ -190,80 +222,97 @@
     addCityPin({ lng: -82.2479, lat: 9.3406, city: 'Bocas del Toro', nights: 2 });
     addCityPin({ lng: -79.3835, lat: 9.0714, city: 'PTY Airport', small: true });
 
-    // --- NEW: load your custom car SVG icon ---
-    // Put your SVG at: /icons/car.svg (repo path: icons/car.svg)
+    // Load custom car SVG icon (repo path: /icons/car.svg)
     await loadSvgAsMapImage('car-icon', './icons/car.svg', 2);
 
-    // --- Routes: Driving (Guatemala City -> Antigua Guatemala) ---
-    const guatemalaCity = [-90.5069, 14.6349];
-    const antiguaGuatemala = [-90.7346, 14.5586];
-    const driveRoute1 = curvedLine(guatemalaCity, antiguaGuatemala, 0.22);
+    // ROUTES source (we will update its geometry on move/zoom so endpoints stay pinned to circle edges)
+    map.addSource('routes', {
+      type: 'geojson',
+      data: { type: "FeatureCollection", features: [] }
+    });
 
-    // Add routes source (or update)
-    if (map.getSource('routes')) {
-      map.getSource('routes').setData({ type: "FeatureCollection", features: [driveRoute1] });
-    } else {
-      map.addSource('routes', {
-        type: 'geojson',
-        data: { type: "FeatureCollection", features: [driveRoute1] }
-      });
-    }
-
-    // Main driving line
-    if (!map.getLayer('drive-route-line')) {
-      map.addLayer({
-        id: 'drive-route-line',
-        type: 'line',
-        source: 'routes',
-        filter: ['==', ['get', 'mode'], 'drive'],
-        paint: {
-          'line-color': '#2f9e6f',
-          'line-width': 3,
-          'line-opacity': 0.85
-        }
-      });
-    }
+    // Driving line
+    map.addLayer({
+      id: 'drive-route-line',
+      type: 'line',
+      source: 'routes',
+      filter: ['==', ['get', 'mode'], 'drive'],
+      paint: {
+        'line-color': '#2f9e6f',
+        'line-width': 3,
+        'line-opacity': 0.85
+      }
+    });
 
     // Direction indicators along the driving line
-    if (!map.getLayer('drive-route-arrows')) {
-      map.addLayer({
-        id: 'drive-route-arrows',
-        type: 'symbol',
-        source: 'routes',
-        filter: ['==', ['get', 'mode'], 'drive'],
-        layout: {
-          'symbol-placement': 'line',
-          'text-field': '▶',
-          'text-size': 14,
-          'symbol-spacing': 80,
-          'text-rotation-alignment': 'map',
-          'text-keep-upright': false
-        },
-        paint: {
-          'text-color': '#2f9e6f',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1
-        }
+    map.addLayer({
+      id: 'drive-route-arrows',
+      type: 'symbol',
+      source: 'routes',
+      filter: ['==', ['get', 'mode'], 'drive'],
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': '▶',
+        'text-size': 14,
+        'symbol-spacing': 80,
+        'text-rotation-alignment': 'map',
+        'text-keep-upright': false
+      },
+      paint: {
+        'text-color': '#2f9e6f',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 1
+      }
+    });
+
+    // Car icon point layer (size ~ secondary pin)
+    map.addLayer({
+      id: 'drive-route-car',
+      type: 'symbol',
+      source: 'routes',
+      filter: ['==', ['get', 'kind'], 'car'],
+      layout: {
+        'icon-image': 'car-icon',
+        'icon-size': 1.0,              // adjust if needed; 1.0 targets ~secondary pin size
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true
+      }
+    });
+
+    function updateGuatemalaToAntiguaDrive() {
+      // Coordinates of the pin centers (must match your addCityPin lng/lat)
+      const guatemalaCityLL = [-90.5069, 14.6349]; // secondary pin
+      const antiguaLL = [-90.7346, 14.5586];       // primary pin
+
+      // Radii in pixels that approximate your circles (including border)
+      const R_PRIMARY = 16;   // ~30px diameter / 2 + border padding
+      const R_SECONDARY = 10; // ~18px diameter / 2 + border padding
+
+      // (2) Trim endpoints to the centered edge of the circles
+      const [startLL, endLL] = adjustLineToPinEdges(map, guatemalaCityLL, antiguaLL, R_SECONDARY, R_PRIMARY);
+
+      // (1) Curved line between destinations
+      const { controlPoint, line } = curvedLineWithControl(startLL, endLL, 0.22);
+
+      // (3) Car icon midpoint along the curve
+      const carPos = midpointForIcon(startLL, endLL, controlPoint);
+      const carPoint = {
+        type: "Feature",
+        properties: { kind: "car" },
+        geometry: { type: "Point", coordinates: carPos }
+      };
+
+      map.getSource('routes').setData({
+        type: "FeatureCollection",
+        features: [line, carPoint]
       });
     }
 
-    // Car icon placed once along the route (custom SVG)
-    if (!map.getLayer('drive-route-car')) {
-      map.addLayer({
-        id: 'drive-route-car',
-        type: 'symbol',
-        source: 'routes',
-        filter: ['==', ['get', 'mode'], 'drive'],
-        layout: {
-          'symbol-placement': 'line',
-          'icon-image': 'car-icon',
-          'icon-size': 0.6,
-          'symbol-spacing': 999999,
-          'icon-rotation-alignment': 'map',
-          'icon-keep-upright': false
-        }
-      });
-    }
+    // Initial draw
+    updateGuatemalaToAntiguaDrive();
+
+    // Keep endpoints locked to pin edges as the map moves/zooms
+    map.on('move', updateGuatemalaToAntiguaDrive);
   });
 </script>
 </body>
