@@ -19,7 +19,7 @@
       background-color: #e0e0e0;
     }
 
-    /* Pin styling */
+    /* Base pin styling */
     .pin {
       width: 30px;
       height: 30px;
@@ -32,7 +32,6 @@
       user-select: none;
       cursor: pointer;
 
-      /* pastel green, mostly transparent */
       background-color: rgba(159, 216, 181, 0.55);
       color: #1f4d3a;
 
@@ -45,6 +44,11 @@
       height: 18px;
       font-size: 12px;
       font-weight: 700;
+    }
+
+    /* Starting city emphasis */
+    .pin.start {
+      border-color: #2f9e6f; /* vibrant green */
     }
   </style>
 </head>
@@ -62,18 +66,17 @@
 
   map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
-  function addCityPin({ lng, lat, city, nights, small = false }) {
+  function addCityPin({ lng, lat, city, nights, small = false, start = false }) {
     const el = document.createElement('div');
     el.className = small ? 'pin small' : 'pin';
+    if (start) el.classList.add('start');
 
-    // Show number only for primary pins
     if (!small && typeof nights === 'number') {
       el.textContent = String(nights);
     } else {
       el.textContent = '';
     }
 
-    // Tooltip content
     let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
     if (!small && typeof nights === 'number') {
       tooltipHtml += `<div style="font-size:12px;">${nights} Night${nights === 1 ? '' : 's'}</div>`;
@@ -85,11 +88,16 @@
       offset: 16
     }).setHTML(tooltipHtml);
 
-    const marker = new maplibregl.Marker({ element: el, anchor: 'bottom' })
+    const marker = new maplibregl.Marker({
+      element: el,
+      anchor: 'bottom'
+    })
       .setLngLat([lng, lat])
       .addTo(map);
 
-    el.addEventListener('mouseenter', () => popup.setLngLat([lng, lat]).addTo(map));
+    el.addEventListener('mouseenter', () =>
+      popup.setLngLat([lng, lat]).addTo(map)
+    );
     el.addEventListener('mouseleave', () => popup.remove());
 
     return marker;
@@ -115,17 +123,34 @@
     });
 
     // --- Guatemala pins ---
-    addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true });
-    addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
-    addCityPin({ lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
+    addCityPin({
+      lng: -90.5069,
+      lat: 14.6349,
+      city: 'Guatemala City',
+      small: true,
+      start: true
+    });
+
+    addCityPin({
+      lng: -90.7346,
+      lat: 14.5586,
+      city: 'Antigua Guatemala',
+      nights: 2
+    });
+
+    addCityPin({
+      lng: -91.1580,
+      lat: 14.7409,
+      city: 'Lake Atitlán',
+      nights: 2
+    });
 
     // --- El Salvador pins ---
     addCityPin({ lng: -89.7360, lat: 13.7770, city: 'Nahuizalco', small: true });
     addCityPin({ lng: -89.7450, lat: 13.8410, city: 'Juayúa', nights: 1 });
     addCityPin({ lng: -89.3850, lat: 13.4920, city: 'El Tunco', nights: 2 });
     addCityPin({ lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
-    
   });
 </script>
 </body>
-</html>
+</html
