@@ -59,13 +59,12 @@
       coords.push([ll.lng, ll.lat]);
     }
 
-    // Midpoint (t=0.5) for arrow placement
+    // Midpoint (t=0.5)
     const t = 0.5, mt = 0.5;
     const midX = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
     const midY = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
     const midLL = map.unproject({ x: midX, y: midY });
 
-    // Direction angle based on A->B screen vector (stable + correct travel direction)
     const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
 
     return { coords, midLL: [midLL.lng, midLL.lat], angleDeg };
@@ -74,15 +73,17 @@
   function addArrowImage(map) {
     if (map.hasImage('arrow-tip')) return;
 
-    // Simple triangle arrow (points RIGHT at 0 degrees)
+    // Create arrow as ImageData via a small canvas, then pass {width,height,data}
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size;
     canvas.height = size;
     const ctx = canvas.getContext('2d');
 
-    // triangle
+    // Background transparent
     ctx.clearRect(0, 0, size, size);
+
+    // Draw filled triangle (points right)
     ctx.fillStyle = '#2f9e6f';
     ctx.beginPath();
     ctx.moveTo(14, 12);
@@ -91,13 +92,19 @@
     ctx.closePath();
     ctx.fill();
 
-    // white halo (stroke) to match line styling
+    // White halo stroke
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 6;
     ctx.lineJoin = 'round';
     ctx.stroke();
 
-    map.addImage('arrow-tip', canvas, { pixelRatio: 2 });
+    const imgData = ctx.getImageData(0, 0, size, size);
+
+    map.addImage('arrow-tip', {
+      width: size,
+      height: size,
+      data: imgData.data
+    }, { pixelRatio: 2 });
   }
 
   window.addEventListener('travelMap:ready', (e) => {
@@ -116,20 +123,15 @@
       });
     }
 
-    // Ensure arrow image exists
     addArrowImage(map);
 
-    // Line layer
     if (!map.getLayer('drive-route-line')) {
       map.addLayer({
         id: 'drive-route-line',
         type: 'line',
         source: 'routes',
         filter: ['==', ['get', 'kind'], 'drive-line'],
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round'
-        },
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
           'line-color': '#2f9e6f',
           'line-width': 3,
@@ -138,7 +140,6 @@
       });
     }
 
-    // Arrow tip layer (single icon at midpoint)
     if (!map.getLayer('drive-route-arrow-tip')) {
       map.addLayer({
         id: 'drive-route-arrow-tip',
