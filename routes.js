@@ -1,6 +1,7 @@
 // routes.js
 // Guatemala City -> Antigua Guatemala
-// Curved line trimmed to pin circle edges + car icon at midpoint (hidden until zoom >= minzoom)
+// Curved line trimmed to pin circle edges + mirrored car icon near midpoint,
+// offset slightly above the line. Car hidden until zoom threshold.
 
 (function () {
   function pinCenterScreenPoint(map, lngLat, radiusPx) {
@@ -28,8 +29,7 @@
     return [[aLL.lng, aLL.lat], [bLL.lng, bLL.lat]];
   }
 
-  // Curvature scales with segment length for consistent look across zoom.
-  // Also returns midpoint on the curve (t=0.5) for the car.
+  // Curvature scales with on-screen segment length (clamped) for consistent look across zoom.
   function curvedLineScreenSpace(map, startLL, endLL, curvatureFactor = 0.18, minPx = 18, maxPx = 55, segments = 90) {
     const a = map.project({ lng: startLL[0], lat: startLL[1] });
     const b = map.project({ lng: endLL[0], lat: endLL[1] });
@@ -60,15 +60,7 @@
       coords.push([ll.lng, ll.lat]);
     }
 
-    // Curve midpoint (t=0.5)
-    const t = 0.5, mt = 0.5;
-    const midX = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
-    const midY = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
-    const midLL = map.unproject({ x: midX, y: midY });
-
-    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-
-    return { coords, midLL: [midLL.lng, midLL.lat], angleDeg };
+    return coords;
   }
 
   async function loadSvgAsMapImage(map, id, svgUrl, pixelRatio = 2) {
@@ -96,6 +88,47 @@
     map.addImage(id, img, { pixelRatio });
   }
 
+  // Creates a mirrored (horizontally flipped) raster of an SVG and registers it via ImageData.
+  async function loadMirroredSvgAsImageData(map, id, svgUrl, pixelRatio = 2) {
+    if (map.hasImage(id)) return;
+
+    const svgText = await fetch(svgUrl, { cache: 'no-store' }).then(r => {
+      if (!r.ok) throw new Error(`Failed to load ${svgUrl}: ${r.status}`);
+      return r.text();
+    });
+
+    const blob = new Blob([svgText], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+
+    URL.revokeObjectURL(url);
+
+    const w = img.naturalWidth || 256;
+    const h = img.naturalHeight || 256;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+
+    // Mirror horizontally: scaleX = -1 and translate back
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(img, 0, 0, w, h);
+
+    const imgData = ctx.getImageData(0, 0, w, h);
+
+    map.addImage(id, { width: w, height: h, data: imgData.data }, { pixelRatio });
+  }
+
   window.addEventListener('travelMap:ready', async (e) => {
     const map = e.detail.map;
 
@@ -105,7 +138,6 @@
     const R_PRIMARY = 15;   // 30px / 2
     const R_SECONDARY = 9;  // 18px / 2
 
-    // Source
     if (!map.getSource('routes')) {
       map.addSource('routes', {
         type: 'geojson',
@@ -113,8 +145,10 @@
       });
     }
 
-    // Load car icon once
-    await loadSvgAsMapImage(map, 'car-icon', './icons/car.svg', 2);
+    // Base icon (optional) + mirrored icon used for this route
+    // (Keeping the base load is harmless and can be reused on later routes.)
+    try { await loadSvgAsMapImage(map, 'car-icon', './icons/car.svg', 2); } catch (_) {}
+    await loadMirroredSvgAsImageData(map, 'car-icon-mirror', './icons/car.svg', 2);
 
     // Line layer
     if (!map.getLayer('drive-route-line')) {
@@ -141,20 +175,46 @@
         filter: ['==', ['get', 'kind'], 'drive-car'],
         minzoom: 8.0,
         layout: {
-          'icon-image': 'car-icon',
-          'icon-size': 3.5,                 // your current size
+          'icon-image': 'car-icon-mirror', // mirrored for this specific route
+          'icon-size': 3.5,                // keep your current size
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
-          'icon-rotate': ['+', ['get', 'angle'], 180]
+          'icon-rotate': ['+', ['get', 'angle'], 180] // keep your existing offset
         }
       });
     }
 
     function updateRoute() {
       const [startLL, endLL] = trimToCircleEdges(map, guatemalaCity, antiguaGuatemala, R_SECONDARY, R_PRIMARY);
-      const { coords, midLL, angleDeg } = curvedLineScreenSpace(map, startLL, endLL, 0.18, 18, 55, 90);
+
+      const coords = curvedLineScreenSpace(map, startLL, endLL, 0.18, 18, 55, 90);
+
+      // Midpoint index on sampled curve
+      const midI = Math.floor(coords.length / 2);
+      const mid = coords[midI];
+      const prev = coords[Math.max(0, midI - 1)];
+      const next = coords[Math.min(coords.length - 1, midI + 1)];
+
+      // Use local tangent at midpoint for rotation and offset
+      const pPrev = map.project({ lng: prev[0], lat: prev[1] });
+      const pNext = map.project({ lng: next[0], lat: next[1] });
+      const tdx = pNext.x - pPrev.x;
+      const tdy = pNext.y - pPrev.y;
+      const tlen = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
+
+      const angleDeg = Math.atan2(tdy, tdx) * 180 / Math.PI;
+
+      // Offset car slightly "above" the line (perpendicular to tangent, screen space)
+      // Left-normal of direction: (-uy, ux)
+      const nx = -tdy / tlen;
+      const ny =  tdx / tlen;
+
+      const offsetPx = 12; // subtle lift above the line
+      const pMid = map.project({ lng: mid[0], lat: mid[1] });
+      const pCar = { x: pMid.x + nx * offsetPx, y: pMid.y + ny * offsetPx };
+      const carLL = map.unproject(pCar);
 
       const lineFeature = {
         type: 'Feature',
@@ -165,10 +225,9 @@
       const carFeature = {
         type: 'Feature',
         properties: { kind: 'drive-car', angle: angleDeg },
-        geometry: { type: 'Point', coordinates: midLL }
+        geometry: { type: 'Point', coordinates: [carLL.lng, carLL.lat] }
       };
 
-      // IMPORTANT: always include the line feature
       map.getSource('routes').setData({
         type: 'FeatureCollection',
         features: [lineFeature, carFeature]
