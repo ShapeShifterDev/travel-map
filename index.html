@@ -4,288 +4,76 @@
   <meta charset="utf-8" />
   <title>Travel Map</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link href="https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.css" rel="stylesheet" />
-  <style>
-    html, body { margin:0; padding:0; height:100%; overflow:hidden; font-family: Arial, sans-serif; }
-    #map { width:100%; height:100%; background-color:#e0e0e0; }
 
-    .pin{
-      width:30px;height:30px;border-radius:999px;display:flex;align-items:center;justify-content:center;
-      font-weight:700;font-size:14px;user-select:none;cursor:pointer;
-      background-color: rgba(159,216,181,0.55); color:#1f4d3a;
-      border:2px solid rgba(255,255,255,0.95);
-      box-shadow:0 2px 6px rgba(0,0,0,0.18);
+  <!-- MapLibre GL CSS -->
+  <link href="https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.css" rel="stylesheet" />
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
     }
-    .pin.small{ width:18px;height:18px;font-size:12px;font-weight:700; }
-    .pin.start{ border-color:#2f9e6f; }
+    #map {
+      width: 100%;
+      height: 100%;
+      background-color: #e0e0e0;
+    }
   </style>
 </head>
 <body>
-<div id="map"></div>
+  <div id="map"></div>
 
-<script src="https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.js"></script>
-<script>
-  const map = new maplibregl.Map({
-    container: 'map',
-    style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
-    center: [-85.5, 12],
-    zoom: 5.3
-  });
+  <!-- MapLibre GL JS -->
+  <script src="https://unpkg.com/maplibre-gl@4.0.0/dist/maplibre-gl.js"></script>
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-left');
-
-  function addCityPin({ lng, lat, city, nights, small = false, start = false }) {
-    const el = document.createElement('div');
-    el.className = small ? 'pin small' : 'pin';
-    if (start) el.classList.add('start');
-
-    if (!small && typeof nights === 'number') el.textContent = String(nights);
-
-    let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
-    if (!small && typeof nights === 'number') {
-      tooltipHtml += `<div style="font-size:12px;">${nights} Night${nights === 1 ? '' : 's'}</div>`;
-    }
-
-    const popup = new maplibregl.Popup({ closeButton:false, closeOnClick:false, offset:16 }).setHTML(tooltipHtml);
-
-    new maplibregl.Marker({ element: el, anchor: 'bottom' })
-      .setLngLat([lng, lat])
-      .addTo(map);
-
-    el.addEventListener('mouseenter', () => popup.setLngLat([lng, lat]).addTo(map));
-    el.addEventListener('mouseleave', () => popup.remove());
-  }
-
-  async function loadSvgAsMapImage(id, svgUrl, pixelRatio = 2) {
-    const svgText = await fetch(svgUrl, { cache: 'no-store' }).then(r => {
-      if (!r.ok) throw new Error(`Failed to load ${svgUrl}: ${r.status}`);
-      return r.text();
-    });
-
-    const blob = new Blob([svgText], { type: 'image/svg+xml' });
-    const objectUrl = URL.createObjectURL(blob);
-
-    const img = new Image();
-    img.decoding = 'async';
-    img.src = objectUrl;
-
-    await new Promise((resolve, reject) => {
-      img.onload = resolve;
-      img.onerror = reject;
-    });
-
-    URL.revokeObjectURL(objectUrl);
-
-    if (!map.hasImage(id)) map.addImage(id, img, { pixelRatio });
-  }
-
-  // Marker anchor is 'bottom' so the lng/lat is the bottom-center of the circle.
-  // The circle center is radiusPx above that point (in screen pixels).
-  function pinCenterScreenPoint(map, lngLat, radiusPx) {
-    const p = map.project({ lng: lngLat[0], lat: lngLat[1] });
-    return { x: p.x, y: p.y - radiusPx };
-  }
-
-  function adjustLineToPinEdges(map, aLngLat, bLngLat, aRadiusPx, bRadiusPx) {
-    const aC = pinCenterScreenPoint(map, aLngLat, aRadiusPx);
-    const bC = pinCenterScreenPoint(map, bLngLat, bRadiusPx);
-
-    const dx = bC.x - aC.x;
-    const dy = bC.y - aC.y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-
-    const ux = dx / len;
-    const uy = dy / len;
-
-    // move from center to edge along the segment direction
-    const aE = { x: aC.x + ux * aRadiusPx, y: aC.y + uy * aRadiusPx };
-    const bE = { x: bC.x - ux * bRadiusPx, y: bC.y - uy * bRadiusPx };
-
-    const aLL = map.unproject(aE);
-    const bLL = map.unproject(bE);
-
-    return [[aLL.lng, aLL.lat], [bLL.lng, bLL.lat]];
-  }
-
-  // Build curve in SCREEN SPACE (so it visibly curves), then unproject to lng/lat for the LineString.
-  function curvedLineScreenSpace(map, startLL, endLL, curvaturePx = 70, segments = 80) {
-    const a = map.project({ lng: startLL[0], lat: startLL[1] });
-    const b = map.project({ lng: endLL[0], lat: endLL[1] });
-
-    const mx = (a.x + b.x) / 2;
-    const my = (a.y + b.y) / 2;
-
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.sqrt(dx*dx + dy*dy) || 1;
-
-    const px = -dy / len;
-    const py = dx / len;
-
-    // control point offset perpendicular to the segment
-    const c = { x: mx + px * curvaturePx, y: my + py * curvaturePx };
-
-    const coords = [];
-    for (let i = 0; i <= segments; i++) {
-      const t = i / segments;
-      const mt = 1 - t;
-
-      const x = (mt*mt*a.x) + (2*mt*t*c.x) + (t*t*b.x);
-      const y = (mt*mt*a.y) + (2*mt*t*c.y) + (t*t*b.y);
-
-      const ll = map.unproject({ x, y });
-      coords.push([ll.lng, ll.lat]);
-    }
-
-    // midpoint on curve for car icon (t=0.5)
-    const t = 0.5, mt = 0.5;
-    const midX = (mt*mt*a.x) + (2*mt*t*c.x) + (t*t*b.x);
-    const midY = (mt*mt*a.y) + (2*mt*t*c.y) + (t*t*b.y);
-    const midLL = map.unproject({ x: midX, y: midY });
-
-    return { coords, midPoint: [midLL.lng, midLL.lat] };
-  }
-
-  map.on('load', async () => {
-    if (map.getLayer('maritime-boundaries')) {
-      map.setLayoutProperty('maritime-boundaries', 'visibility', 'none');
-    }
-
-    // Country soft fill
-    const countriesUrl = `./custom.geo.json?v=${Date.now()}`;
-    const resp = await fetch(countriesUrl, { cache: 'no-store' });
-    if (!resp.ok) throw new Error(`Failed to load custom.geo.json: ${resp.status}`);
-    const geojson = await resp.json();
-
-    map.addSource('visited-countries', { type: 'geojson', data: geojson });
-    map.addLayer({
-      id: 'visited-countries-softfill',
-      type: 'fill',
-      source: 'visited-countries',
-      paint: { 'fill-color': '#ffe8a3', 'fill-opacity': 0.30 }
-    });
-
-    // Pins
-    addCityPin({ lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true });
-    addCityPin({ lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
-    addCityPin({ lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
-
-    addCityPin({ lng: -89.7360, lat: 13.7770, city: 'Nahuizalco', small: true });
-    addCityPin({ lng: -89.7450, lat: 13.8410, city: 'Juayúa', nights: 1 });
-    addCityPin({ lng: -89.3850, lat: 13.4920, city: 'El Tunco', nights: 2 });
-    addCityPin({ lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
-
-    addCityPin({ lng: -79.5199, lat: 8.9824, city: 'Panama City', nights: 3 });
-    addCityPin({ lng: -82.2479, lat: 9.3406, city: 'Bocas del Toro', nights: 2 });
-    addCityPin({ lng: -79.3835, lat: 9.0714, city: 'PTY Airport', small: true });
-
-    // Try to load car icon; if it fails, line should still render.
-    try {
-      await loadSvgAsMapImage('car-icon', './icons/car.svg', 2);
-    } catch (e) {
-      console.warn('Car icon failed to load; line will still show:', e);
-    }
-
-    // Routes source
-    map.addSource('routes', { type: 'geojson', data: { type: "FeatureCollection", features: [] } });
-
-    // Driving line layer
-    map.addLayer({
-      id: 'drive-route-line',
-      type: 'line',
-      source: 'routes',
-      filter: ['==', ['get', 'mode'], 'drive'],
-      paint: {
-        'line-color': '#2f9e6f',
-        'line-width': 3,
-        'line-opacity': 0.85,
-        'line-join': 'round',
-        'line-cap': 'round'
-      }
-    });
-
-    // Direction arrows
-    map.addLayer({
-      id: 'drive-route-arrows',
-      type: 'symbol',
-      source: 'routes',
-      filter: ['==', ['get', 'mode'], 'drive'],
-      layout: {
-        'symbol-placement': 'line',
-        'text-field': '▶',
-        'text-size': 14,
-        'symbol-spacing': 90,
-        'text-rotation-alignment': 'map',
-        'text-keep-upright': false
-      },
-      paint: {
-        'text-color': '#2f9e6f',
-        'text-halo-color': '#ffffff',
-        'text-halo-width': 1
-      }
-    });
-
-    // Car icon layer (only if loaded)
-    if (map.hasImage('car-icon')) {
-      map.addLayer({
-        id: 'drive-route-car',
-        type: 'symbol',
-        source: 'routes',
-        filter: ['==', ['get', 'kind'], 'car'],
-        layout: {
-          'icon-image': 'car-icon',
-          'icon-size': 1.0, // ~secondary pin
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true
-        }
+  <!-- Base map + countries layer only -->
+  <script>
+    (async function initBaseMap() {
+      const map = new maplibregl.Map({
+        container: 'map',
+        style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+        center: [-85.5, 12],
+        zoom: 5.3
       });
-    }
 
-    function updateGuatemalaToAntiguaDrive() {
-      const guatemalaCityLL = [-90.5069, 14.6349]; // secondary (small)
-      const antiguaLL = [-90.7346, 14.5586];       // primary (large)
+      map.addControl(new maplibregl.NavigationControl(), 'top-left');
 
-      const R_PRIMARY = 15;    // 30/2
-      const R_SECONDARY = 9;   // 18/2
+      map.on('load', async () => {
+        // Hide maritime/sea territory boundaries (if present in the style)
+        if (map.getLayer('maritime-boundaries')) {
+          map.setLayoutProperty('maritime-boundaries', 'visibility', 'none');
+        }
 
-      // Trim endpoints to the CIRCLE EDGES (centered)
-      const [startLL, endLL] = adjustLineToPinEdges(map, guatemalaCityLL, antiguaLL, R_SECONDARY, R_PRIMARY);
+        // Load visited countries GeoJSON (cache-busted)
+        const countriesUrl = `./custom.geo.json?v=${Date.now()}`;
+        const resp = await fetch(countriesUrl, { cache: 'no-store' });
+        if (!resp.ok) throw new Error(`Failed to load custom.geo.json: ${resp.status}`);
+        const geojson = await resp.json();
 
-      // Build a smooth curved LineString by sampling a screen-space bezier
-      const { coords, midPoint } = curvedLineScreenSpace(map, startLL, endLL, 70, 90);
+        // Add visited countries source + soft fill layer
+        map.addSource('visited-countries', { type: 'geojson', data: geojson });
+        map.addLayer({
+          id: 'visited-countries-softfill',
+          type: 'fill',
+          source: 'visited-countries',
+          paint: {
+            'fill-color': '#ffe8a3',
+            'fill-opacity': 0.30
+          }
+        });
 
-      const driveLine = {
-        type: "Feature",
-        properties: { mode: "drive" },
-        geometry: { type: "LineString", coordinates: coords }
-      };
+        // Expose map for pins/routes scripts and signal readiness
+        window.travelMap = map;
+        window.dispatchEvent(new CustomEvent('travelMap:ready', { detail: { map } }));
+      });
+    })();
+  </script>
 
-      const carPoint = {
-        type: "Feature",
-        properties: { kind: "car" },
-        geometry: { type: "Point", coordinates: midPoint }
-      };
-
-      const fc = {
-        type: "FeatureCollection",
-        features: map.hasImage('car-icon') ? [driveLine, carPoint] : [driveLine]
-      };
-
-      map.getSource('routes').setData(fc);
-    }
-
-    // Initial draw (also after style finishes first render)
-    updateGuatemalaToAntiguaDrive();
-    map.once('idle', updateGuatemalaToAntiguaDrive);
-
-    // Keep endpoints aligned while moving/zooming
-    map.on('move', updateGuatemalaToAntiguaDrive);
-    map.on('zoom', updateGuatemalaToAntiguaDrive);
-    map.on('resize', updateGuatemalaToAntiguaDrive);
-
-    // Minimal debug: confirm routes source updates
-    console.log('Drive route initialized; routes source present:', !!map.getSource('routes'));
-  });
-</script>
+  <!-- Next files you will add later (leave commented until created) -->
+  <!-- <script src="./pins.js" defer></script> -->
+  <!-- <script src="./routes.js" defer></script> -->
 </body>
 </html>
