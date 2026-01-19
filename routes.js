@@ -1,7 +1,7 @@
 // routes.js
 // One curved driving route: Guatemala City -> Antigua Guatemala
 // Trimmed to start/end at the edge-center of the pin circles.
-// Adds ONE direction arrow tip at the center of the line (no car icon yet).
+// Adds ONE direction arrow tip at the center of the line (icon + rotation).
 
 (function () {
   function pinCenterScreenPoint(map, lngLat, radiusPx) {
@@ -29,7 +29,6 @@
     return [[aLL.lng, aLL.lat], [bLL.lng, bLL.lat]];
   }
 
-  // Curvature scales with segment length (clamped) for consistent look across zoom.
   function curvedLineScreenSpace(map, startLL, endLL, curvatureFactor = 0.18, minPx = 18, maxPx = 55, segments = 90) {
     const a = map.project({ lng: startLL[0], lat: startLL[1] });
     const b = map.project({ lng: endLL[0], lat: endLL[1] });
@@ -60,23 +59,45 @@
       coords.push([ll.lng, ll.lat]);
     }
 
-    // Arrow position: midpoint of the curve in screen space (t = 0.5)
+    // Midpoint (t=0.5) for arrow placement
     const t = 0.5, mt = 0.5;
     const midX = (mt * mt * a.x) + (2 * mt * t * c.x) + (t * t * b.x);
     const midY = (mt * mt * a.y) + (2 * mt * t * c.y) + (t * t * b.y);
-
-    // Direction at midpoint: derivative of quadratic bezier at t=0.5
-    // B'(t)=2(1-t)(C-A)+2t(B-C). At t=0.5 => (C-A)+(B-C)=B-A
-    // Using screen-space A and B gives stable direction.
-    const dirDx = b.x - a.x;
-    const dirDy = b.y - a.y;
-
-    const angleRad = Math.atan2(dirDy, dirDx);
-    const angleDeg = angleRad * 180 / Math.PI;
-
     const midLL = map.unproject({ x: midX, y: midY });
 
+    // Direction angle based on A->B screen vector (stable + correct travel direction)
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
     return { coords, midLL: [midLL.lng, midLL.lat], angleDeg };
+  }
+
+  function addArrowImage(map) {
+    if (map.hasImage('arrow-tip')) return;
+
+    // Simple triangle arrow (points RIGHT at 0 degrees)
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+
+    // triangle
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = '#2f9e6f';
+    ctx.beginPath();
+    ctx.moveTo(14, 12);
+    ctx.lineTo(52, 32);
+    ctx.lineTo(14, 52);
+    ctx.closePath();
+    ctx.fill();
+
+    // white halo (stroke) to match line styling
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 6;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+
+    map.addImage('arrow-tip', canvas, { pixelRatio: 2 });
   }
 
   window.addEventListener('travelMap:ready', (e) => {
@@ -94,6 +115,9 @@
         data: { type: 'FeatureCollection', features: [] }
       });
     }
+
+    // Ensure arrow image exists
+    addArrowImage(map);
 
     // Line layer
     if (!map.getLayer('drive-route-line')) {
@@ -114,7 +138,7 @@
       });
     }
 
-    // Single arrow tip at midpoint
+    // Arrow tip layer (single icon at midpoint)
     if (!map.getLayer('drive-route-arrow-tip')) {
       map.addLayer({
         id: 'drive-route-arrow-tip',
@@ -122,18 +146,13 @@
         source: 'routes',
         filter: ['==', ['get', 'kind'], 'drive-arrow'],
         layout: {
-          'text-field': '▶',
-          'text-size': 18,
-          'text-rotation-alignment': 'map',
-          'text-keep-upright': false,
-          'text-allow-overlap': true,
-          'text-ignore-placement': true,
-          'text-rotate': ['get', 'angle']
-        },
-        paint: {
-          'text-color': '#2f9e6f',
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.2
+          'icon-image': 'arrow-tip',
+          'icon-size': 0.35,
+          'icon-rotation-alignment': 'map',
+          'icon-keep-upright': false,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotate': ['get', 'angle']
         }
       });
     }
@@ -145,10 +164,10 @@
         map,
         startLL,
         endLL,
-        0.18,  // curvatureFactor
-        18,    // minPx
-        55,    // maxPx
-        90     // segments
+        0.18,
+        18,
+        55,
+        90
       );
 
       const lineFeature = {
