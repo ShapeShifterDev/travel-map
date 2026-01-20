@@ -164,12 +164,12 @@
         filter: ['==', ['get', 'kind'], 'flight-smallplane'],
         layout: {
           'icon-image': 'smallplane-icon',
-          'icon-size': 2.2,
+          'icon-size': 0.22,
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
           'icon-ignore-placement': true,
-          'icon-rotate': ['get', 'angle']
+          'icon-rotate': ['+', ['get', 'angle'], 180]
         }
       });
     }
