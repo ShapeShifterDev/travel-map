@@ -10,10 +10,16 @@
     style.textContent = `
       .pin-wrap{
         position: relative;
-        display: inline-block;
+        width: 0;
+        height: 0;
       }
 
-      .pin {
+      .pin{
+        position: absolute;
+        left: 0;
+        bottom: 0;
+        transform: translateX(-50%);
+
         width: 30px;
         height: 30px;
         border-radius: 999px;
@@ -32,22 +38,22 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.18);
       }
 
-      .pin.small {
+      .pin.small{
         width: 18px;
         height: 18px;
         font-size: 12px;
         font-weight: 700;
       }
 
-      .pin.start {
+      .pin.start{
         border-color: #2f9e6f;
       }
 
       .pin-label{
         position: absolute;
-        left: 50%;
+        left: 0;
+        bottom: -26px;
         transform: translateX(-50%);
-        top: calc(100% + 4px);
         font-size: 12px;
         font-weight: 700;
         color: #1f4d3a;
@@ -77,14 +83,14 @@
       el.textContent = '';
     }
 
-    if (typeof label === 'string' && label.trim().length) {
+    wrap.appendChild(el);
+
+    if (typeof label === 'string' && label.trim()) {
       const lab = document.createElement('div');
       lab.className = 'pin-label';
       lab.textContent = label.trim();
       wrap.appendChild(lab);
     }
-
-    wrap.appendChild(el);
 
     let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
     if (!small && typeof nights === 'number') {
