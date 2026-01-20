@@ -164,7 +164,7 @@
         filter: ['==', ['get', 'kind'], 'flight-smallplane'],
         layout: {
           'icon-image': 'smallplane-icon',
-          'icon-size': 0.22,
+          'icon-size': 0.10,
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
