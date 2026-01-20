@@ -8,6 +8,11 @@
     const style = document.createElement('style');
     style.id = 'pin-styles';
     style.textContent = `
+      .pin-wrap{
+        position: relative;
+        display: inline-block;
+      }
+
       .pin {
         width: 30px;
         height: 30px;
@@ -37,11 +42,31 @@
       .pin.start {
         border-color: #2f9e6f;
       }
+
+      .pin-label{
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        top: calc(100% + 4px);
+        font-size: 12px;
+        font-weight: 700;
+        color: #1f4d3a;
+        background: rgba(255,255,255,0.85);
+        padding: 2px 6px;
+        border-radius: 999px;
+        line-height: 1;
+        white-space: nowrap;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+        pointer-events: none;
+      }
     `;
     document.head.appendChild(style);
   }
 
-  function addCityPin(map, { lng, lat, city, nights, small = false, start = false }) {
+  function addCityPin(map, { lng, lat, city, nights, small = false, start = false, label }) {
+    const wrap = document.createElement('div');
+    wrap.className = 'pin-wrap';
+
     const el = document.createElement('div');
     el.className = small ? 'pin small' : 'pin';
     if (start) el.classList.add('start');
@@ -51,6 +76,15 @@
     } else {
       el.textContent = '';
     }
+
+    if (typeof label === 'string' && label.trim().length) {
+      const lab = document.createElement('div');
+      lab.className = 'pin-label';
+      lab.textContent = label.trim();
+      wrap.appendChild(lab);
+    }
+
+    wrap.appendChild(el);
 
     let tooltipHtml = `<div style="font-weight:700;">${city}</div>`;
     if (!small && typeof nights === 'number') {
@@ -63,7 +97,7 @@
       offset: 16
     }).setHTML(tooltipHtml);
 
-    new maplibregl.Marker({ element: el, anchor: 'bottom' })
+    new maplibregl.Marker({ element: wrap, anchor: 'bottom' })
       .setLngLat([lng, lat])
       .addTo(map);
 
@@ -77,7 +111,7 @@
     ensurePinStyles();
 
     // --- Guatemala ---
-    addCityPin(map, { lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true });
+    addCityPin(map, { lng: -90.5069, lat: 14.6349, city: 'Guatemala City', small: true, start: true, label: 'Start' });
     addCityPin(map, { lng: -90.7346, lat: 14.5586, city: 'Antigua Guatemala', nights: 2 });
     addCityPin(map, { lng: -91.1580, lat: 14.7409, city: 'Lake Atitlán', nights: 2 });
 
@@ -88,7 +122,7 @@
     addCityPin(map, { lng: -89.2182, lat: 13.6929, city: 'San Salvador', nights: 1 });
 
     // --- Panama ---
-    addCityPin(map, { lng: -79.5199, lat: 8.9824, city: 'Panama City', nights: 3 });
+    addCityPin(map, { lng: -79.5199, lat: 8.9824, city: 'Panama City', nights: 3, label: 'End' });
     addCityPin(map, { lng: -82.2479, lat: 9.3406, city: 'Bocas del Toro', nights: 2 });
     addCityPin(map, { lng: -79.3835, lat: 9.0714, city: 'PTY Airport', small: true });
   });
