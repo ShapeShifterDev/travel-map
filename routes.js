@@ -180,6 +180,7 @@
     const antiguaGuatemala = [-90.7346, 14.5586];  // primary (large)
     const panajachel = [-91.1580, 14.7409];        // primary (large)
     const juayua = [-89.7450, 13.8410];
+    const nahuizalco = [-89.7369, 13.7778];
 
     // Pin radii must match pins.js CSS sizes
     const R_PRIMARY = 15;   // 30px / 2
@@ -245,9 +246,9 @@
         ...buildRouteFeatures(map, 'antigua_to_panajachel', antiguaGuatemala, panajachel, R_PRIMARY, R_PRIMARY)
       );
 
-      // Route 3: Panajachel -> Juayúa (primary -> primary)
+      // Route 3: Panajachel -> Nahuizalco (primary -> secondary)
       features.push(
-        ...buildRouteFeatures(map, 'panajachel_to_juayua', panajachel, juayua, R_PRIMARY, R_PRIMARY)
+        ...buildRouteFeatures(map, 'panajachel_to_nahuizalco', panajachel, nahuizalco, R_PRIMARY, R_SECONDARY)
       );
 
       map.getSource('routes').setData({
