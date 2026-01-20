@@ -178,9 +178,10 @@
     // Pin coords must match pins.js
     const guatemalaCity = [-90.5069, 14.6349];     // secondary (small)
     const antiguaGuatemala = [-90.7346, 14.5586];  // primary (large)
-    const panajachel = [-91.1580, 14.7409];        // primary (large)
+    const panajachel = [-91.1580, 14.7409];        
     const juayua = [-89.7450, 13.8410];
     const nahuizalco = [-89.7369, 13.7778];
+    const elTunco = [-89.3850, 13.4920];
 
     // Pin radii must match pins.js CSS sizes
     const R_PRIMARY = 15;   // 30px / 2
@@ -254,6 +255,11 @@
       // Route 4: Nahuizalco -> Juayúa (primary -> primary, NO car icon)
       features.push(
         ...buildRouteFeatures(map, 'nahuizalco_to_juayua', nahuizalco, juayua, R_SECONDARY, R_PRIMARY).filter(f => f.properties.kind !== 'drive-car')
+      );
+
+      // Route 5: Juayúa -> El Tunco (primary -> primary)
+      features.push(
+        ...buildRouteFeatures(map, 'juayua_to_eltunco', juayua, elTunco, R_PRIMARY, R_PRIMARY)
       );
 
       map.getSource('routes').setData({
