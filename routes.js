@@ -182,6 +182,7 @@
     const juayua = [-89.7450, 13.8410];
     const nahuizalco = [-89.7369, 13.7778];
     const elTunco = [-89.3850, 13.4920];
+    const sanSalvador = [-89.2182, 13.6929];
 
     // Pin radii must match pins.js CSS sizes
     const R_PRIMARY = 15;   // 30px / 2
@@ -260,6 +261,11 @@
       // Route 5: Juayúa -> El Tunco (primary -> primary)
       features.push(
         ...buildRouteFeatures(map, 'juayua_to_eltunco', juayua, elTunco, R_PRIMARY, R_PRIMARY)
+      );
+
+      // Route 6: El Tunco -> San Salvador (primary -> primary)
+      features.push(
+        ...buildRouteFeatures(map, 'eltunco_to_sansalvador', elTunco, sanSalvador, R_PRIMARY, R_PRIMARY)
       );
 
       map.getSource('routes').setData({
