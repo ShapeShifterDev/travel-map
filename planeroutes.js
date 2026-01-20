@@ -177,7 +177,7 @@
       const nx = -dy / len;
       const ny = dx / len;
       
-      const offsetPx = 14; // slightly larger than car for visibility
+      const offsetPx = -14; // slightly larger than car for visibility
       const pMid = map.project({ lng: mid[0], lat: mid[1] });
       const pPlane = { x: pMid.x + nx * offsetPx, y: pMid.y + ny * offsetPx };
       const planeLL = map.unproject(pPlane);
