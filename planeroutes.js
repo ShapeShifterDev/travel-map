@@ -100,6 +100,7 @@
     const sanSalvador = [-89.2182, 13.6929]; // primary
     const ptyAirport = [-79.3835, 9.0714];   // secondary
     const bocasDelToro = [-82.2479, 9.3406]; // primary
+    const panamaCity = [-79.5199, 8.9824]; // Panama City
 
     // Pin radii (must match pins.js CSS)
     const R_PRIMARY = 15;   // 30px / 2
@@ -264,6 +265,62 @@
 
     flightFeatures.push(lineFeature2, smallPlaneFeature2);
   }
+
+  // --- Route 3: Bocas Del Toro -> Panama City (small plane) ---
+{
+  const [startLL3, endLL3] = trimToCircleEdges(
+    map,
+    bocasDelToro,
+    panamaCity,
+    R_PRIMARY,
+    R_PRIMARY
+  );
+
+  const coords3 = curvedLineScreenSpace(map, startLL3, endLL3, 0.14, 14, 45, 90);
+
+  const midI3 = Math.floor(coords3.length / 2);
+  const mid3 = coords3[midI3];
+  const prev3 = coords3[Math.max(0, midI3 - 1)];
+  const next3 = coords3[Math.min(coords3.length - 1, midI3 + 1)];
+
+  const pPrev3 = map.project({ lng: prev3[0], lat: prev3[1] });
+  const pNext3 = map.project({ lng: next3[0], lat: next3[1] });
+
+  const dx3 = pNext3.x - pPrev3.x;
+  const dy3 = pNext3.y - pPrev3.y;
+  const len3 = Math.sqrt(dx3 * dx3 + dy3 * dy3) || 1;
+
+  const angleDeg3 = Math.atan2(dy3, dx3) * 180 / Math.PI;
+
+  // Perpendicular unit vector
+  const nx3 = -dy3 / len3;
+  const ny3 = dx3 / len3;
+
+  // SAME side as other small-plane route (below the line)
+  const offsetPx3 = 14;
+
+  const pMid3 = map.project({ lng: mid3[0], lat: mid3[1] });
+  const pPlane3 = { x: pMid3.x + nx3 * offsetPx3, y: pMid3.y + ny3 * offsetPx3 };
+  const planeLL3 = map.unproject(pPlane3);
+
+  const lineFeature3 = {
+    type: 'Feature',
+    properties: { kind: 'flight-line', routeId: 'bocas_to_panamacity' },
+    geometry: { type: 'LineString', coordinates: coords3 }
+  };
+
+  const smallPlaneFeature3 = {
+    type: 'Feature',
+    properties: {
+      kind: 'flight-smallplane',
+      routeId: 'bocas_to_panamacity',
+      angle: angleDeg3
+    },
+    geometry: { type: 'Point', coordinates: [planeLL3.lng, planeLL3.lat] }
+  };
+
+  flightFeatures.push(lineFeature3, smallPlaneFeature3);
+}
 
   map.getSource('planeRoutes').setData({
     type: 'FeatureCollection',
