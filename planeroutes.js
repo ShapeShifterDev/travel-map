@@ -144,7 +144,7 @@
         filter: ['==', ['get', 'kind'], 'flight-plane'],
         layout: {
           'icon-image': 'plane-icon',
-          'icon-size': 1.1,
+          'icon-size': 2.2,
           'icon-rotation-alignment': 'map',
           'icon-keep-upright': false,
           'icon-allow-overlap': true,
@@ -167,7 +167,20 @@
       const pPrev = map.project({ lng: prev[0], lat: prev[1] });
       const pNext = map.project({ lng: next[0], lat: next[1] });
 
-      const angleDeg = Math.atan2(pNext.y - pPrev.y, pNext.x - pPrev.x) * 180 / Math.PI;
+      const dx = pNext.x - pPrev.x;
+      const dy = pNext.y - pPrev.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+      // Offset plane above the line (perpendicular, screen space)
+      const nx = -dy / len;
+      const ny = dx / len;
+      
+      const offsetPx = 14; // slightly larger than car for visibility
+      const pMid = map.project({ lng: mid[0], lat: mid[1] });
+      const pPlane = { x: pMid.x + nx * offsetPx, y: pMid.y + ny * offsetPx };
+      const planeLL = map.unproject(pPlane);
 
       const lineFeature = {
         type: 'Feature',
@@ -178,7 +191,7 @@
       const planeFeature = {
         type: 'Feature',
         properties: { kind: 'flight-plane', routeId: 'sansalvador_to_pty', angle: angleDeg },
-        geometry: { type: 'Point', coordinates: mid }
+        geometry: { type: 'Point', coordinates: [planeLL.lng, planeLL.lat] }
       };
 
       map.getSource('planeRoutes').setData({
