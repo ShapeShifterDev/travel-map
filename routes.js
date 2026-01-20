@@ -251,6 +251,11 @@
         ...buildRouteFeatures(map, 'panajachel_to_nahuizalco', panajachel, nahuizalco, R_PRIMARY, R_SECONDARY)
       );
 
+      // Route 4: Nahuizalco -> Juayúa (primary -> primary, NO car icon)
+      features.push(
+        ...buildRouteFeatures(map, 'nahuizalco_to_juayua', nahuizalco, juayua, R_SECONDARY, R_PRIMARY).filter(f => f.properties.kind !== 'drive-car')
+      );
+
       map.getSource('routes').setData({
         type: 'FeatureCollection',
         features
