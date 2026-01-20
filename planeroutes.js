@@ -99,6 +99,7 @@
     // Pin coordinates (must match pins.js)
     const sanSalvador = [-89.2182, 13.6929]; // primary
     const ptyAirport = [-79.3835, 9.0714];   // secondary
+    const bocasDelToro = [-82.2479, 9.3406]; // primary
 
     // Pin radii (must match pins.js CSS)
     const R_PRIMARY = 15;   // 30px / 2
@@ -112,8 +113,9 @@
       });
     }
 
-    // Load plane icon
+    // Load plane icons
     await loadSvgAsMapImage(map, 'plane-icon', './icons/plane.svg', 2);
+    await loadSvgAsMapImage(map, 'smallplane-icon', './icons/smallplane.svg', 2);
 
     // Dashed flight line layer
     if (!map.getLayer('flight-route-line')) {
@@ -154,51 +156,120 @@
       });
     }
 
-    function updateFlightRoutes() {
-      const [startLL, endLL] = trimToCircleEdges(map, sanSalvador, ptyAirport, R_PRIMARY, R_SECONDARY);
-      const coords = curvedLineScreenSpace(map, startLL, endLL, 0.14, 14, 45, 90);
-
-      // Midpoint & local tangent for icon rotation
-      const midI = Math.floor(coords.length / 2);
-      const mid = coords[midI];
-      const prev = coords[Math.max(0, midI - 1)];
-      const next = coords[Math.min(coords.length - 1, midI + 1)];
-
-      const pPrev = map.project({ lng: prev[0], lat: prev[1] });
-      const pNext = map.project({ lng: next[0], lat: next[1] });
-
-      const dx = pNext.x - pPrev.x;
-      const dy = pNext.y - pPrev.y;
-      const len = Math.sqrt(dx * dx + dy * dy) || 1;
-
-      const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
-
-      // Offset plane above the line (perpendicular, screen space)
-      const nx = -dy / len;
-      const ny = dx / len;
-      
-      const offsetPx = -14; // slightly larger than car for visibility
-      const pMid = map.project({ lng: mid[0], lat: mid[1] });
-      const pPlane = { x: pMid.x + nx * offsetPx, y: pMid.y + ny * offsetPx };
-      const planeLL = map.unproject(pPlane);
-
-      const lineFeature = {
-        type: 'Feature',
-        properties: { kind: 'flight-line', routeId: 'sansalvador_to_pty' },
-        geometry: { type: 'LineString', coordinates: coords }
-      };
-
-      const planeFeature = {
-        type: 'Feature',
-        properties: { kind: 'flight-plane', routeId: 'sansalvador_to_pty', angle: angleDeg },
-        geometry: { type: 'Point', coordinates: [planeLL.lng, planeLL.lat] }
-      };
-
-      map.getSource('planeRoutes').setData({
-        type: 'FeatureCollection',
-        features: [lineFeature, planeFeature]
+    if (!map.getLayer('flight-route-smallplane')) {
+      map.addLayer({
+        id: 'flight-route-smallplane',
+        type: 'symbol',
+        source: 'planeRoutes',
+        filter: ['==', ['get', 'kind'], 'flight-smallplane'],
+        layout: {
+          'icon-image': 'smallplane-icon',
+          'icon-size': 2.2,
+          'icon-rotation-alignment': 'map',
+          'icon-keep-upright': false,
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
+          'icon-rotate': ['get', 'angle']
+        }
       });
     }
+
+    function updateFlightRoutes() {
+  const flightFeatures = [];
+
+  // --- Route 1: San Salvador -> PTY (big plane, icon sits on your chosen side) ---
+  {
+    const [startLL, endLL] = trimToCircleEdges(map, sanSalvador, ptyAirport, R_PRIMARY, R_SECONDARY);
+    const coords = curvedLineScreenSpace(map, startLL, endLL, 0.14, 14, 45, 90);
+
+    const midI = Math.floor(coords.length / 2);
+    const mid = coords[midI];
+    const prev = coords[Math.max(0, midI - 1)];
+    const next = coords[Math.min(coords.length - 1, midI + 1)];
+
+    const pPrev = map.project({ lng: prev[0], lat: prev[1] });
+    const pNext = map.project({ lng: next[0], lat: next[1] });
+
+    const dx = pNext.x - pPrev.x;
+    const dy = pNext.y - pPrev.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+    const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    // Offset (your current setting)
+    const nx = -dy / len;
+    const ny = dx / len;
+
+    const offsetPx = -14;
+    const pMid = map.project({ lng: mid[0], lat: mid[1] });
+    const pPlane = { x: pMid.x + nx * offsetPx, y: pMid.y + ny * offsetPx };
+    const planeLL = map.unproject(pPlane);
+
+    const lineFeature = {
+      type: 'Feature',
+      properties: { kind: 'flight-line', routeId: 'sansalvador_to_pty' },
+      geometry: { type: 'LineString', coordinates: coords }
+    };
+
+    const planeFeature = {
+      type: 'Feature',
+      properties: { kind: 'flight-plane', routeId: 'sansalvador_to_pty', angle: angleDeg },
+      geometry: { type: 'Point', coordinates: [planeLL.lng, planeLL.lat] }
+    };
+
+    flightFeatures.push(lineFeature, planeFeature);
+  }
+
+  // --- Route 2: PTY -> Bocas (small plane, icon sits BELOW the line) ---
+  {
+    const [startLL2, endLL2] = trimToCircleEdges(map, ptyAirport, bocasDelToro, R_SECONDARY, R_PRIMARY);
+    const coords2 = curvedLineScreenSpace(map, startLL2, endLL2, 0.14, 14, 45, 90);
+
+    const midI2 = Math.floor(coords2.length / 2);
+    const mid2 = coords2[midI2];
+    const prev2 = coords2[Math.max(0, midI2 - 1)];
+    const next2 = coords2[Math.min(coords2.length - 1, midI2 + 1)];
+
+    const pPrev2 = map.project({ lng: prev2[0], lat: prev2[1] });
+    const pNext2 = map.project({ lng: next2[0], lat: next2[1] });
+
+    const dx2 = pNext2.x - pPrev2.x;
+    const dy2 = pNext2.y - pPrev2.y;
+    const len2 = Math.sqrt(dx2 * dx2 + dy2 * dy2) || 1;
+
+    const angleDeg2 = Math.atan2(dy2, dx2) * 180 / Math.PI;
+
+    // Perpendicular unit vector
+    const nx2 = -dy2 / len2;
+    const ny2 = dx2 / len2;
+
+    // BELOW the line for this route (opposite sign vs Route 1)
+    const offsetPx2 = 14;
+
+    const pMid2 = map.project({ lng: mid2[0], lat: mid2[1] });
+    const pPlane2 = { x: pMid2.x + nx2 * offsetPx2, y: pMid2.y + ny2 * offsetPx2 };
+    const planeLL2 = map.unproject(pPlane2);
+
+    const lineFeature2 = {
+      type: 'Feature',
+      properties: { kind: 'flight-line', routeId: 'pty_to_bocas' },
+      geometry: { type: 'LineString', coordinates: coords2 }
+    };
+
+    const smallPlaneFeature2 = {
+      type: 'Feature',
+      properties: { kind: 'flight-smallplane', routeId: 'pty_to_bocas', angle: angleDeg2 },
+      geometry: { type: 'Point', coordinates: [planeLL2.lng, planeLL2.lat] }
+    };
+
+    flightFeatures.push(lineFeature2, smallPlaneFeature2);
+  }
+
+  map.getSource('planeRoutes').setData({
+    type: 'FeatureCollection',
+    features: flightFeatures
+  });
+}
 
     updateFlightRoutes();
     map.once('idle', updateFlightRoutes);
